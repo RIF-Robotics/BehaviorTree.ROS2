@@ -133,7 +133,7 @@ public:
    * It must return either SUCCESS or FAILURE.
    */
   virtual BT::NodeStatus onFailure(ServiceNodeErrorCode /*error*/)
-  { 
+  {
     return NodeStatus::FAILURE;
   }
 
@@ -144,6 +144,7 @@ protected:
   bool service_name_may_change_ = false;
   const std::chrono::milliseconds service_timeout_;
   const std::chrono::milliseconds wait_for_service_timeout_;
+  std::string service_introspection_state_;
 
 private:
 
@@ -172,7 +173,8 @@ template<class T> inline
   BT::ActionNodeBase(instance_name, conf),
   node_(params.nh),
   service_timeout_(params.server_timeout),
-  wait_for_service_timeout_(params.wait_for_server_timeout)
+  wait_for_service_timeout_(params.wait_for_server_timeout),
+  service_introspection_state_(params.service_introspection_state)
 {
   // check port remapping
   auto portIt = config().input_ports.find("service_name");
@@ -224,7 +226,23 @@ template<class T> inline
 
   callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
   callback_group_executor_.add_callback_group(callback_group_, node_->get_node_base_interface());
-  service_client_ = node_->create_client<T>(service_name, rmw_qos_profile_services_default, callback_group_);
+  service_client_ = node_->create_client<T>(service_name, rclcpp::ServicesQoS(), callback_group_);
+
+  rcl_service_introspection_state_t introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
+  if (service_introspection_state_ == "disabled") {
+    introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
+  } else if (service_introspection_state_ == "metadata") {
+    introspection_state = RCL_SERVICE_INTROSPECTION_METADATA;
+  } else if (service_introspection_state_ == "contents") {
+    introspection_state = RCL_SERVICE_INTROSPECTION_CONTENTS;
+  } else {
+    RCLCPP_ERROR(node_->get_logger(), "Invalid service_introspection_state: %s. Using 'disabled'.",
+                 service_introspection_state_.c_str());
+    introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
+  }
+  service_client_->configure_introspection(
+      node_->get_clock(), rclcpp::SystemDefaultsQoS(), introspection_state);
+
   prev_service_name_ = service_name;
 
   bool found = service_client_->wait_for_service(wait_for_service_timeout_);
@@ -335,4 +353,3 @@ template<class T> inline
 
 
 }  // namespace BT
-

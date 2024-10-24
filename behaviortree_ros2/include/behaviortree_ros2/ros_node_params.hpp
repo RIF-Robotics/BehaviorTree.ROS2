@@ -40,6 +40,9 @@ struct RosNodeParams
   std::chrono::milliseconds server_timeout = std::chrono::milliseconds(1000);
   // timeout used when detecting the server the first time
   std::chrono::milliseconds wait_for_server_timeout = std::chrono::milliseconds(500);
+
+  // Service introspection state
+  std::string service_introspection_state = "disabled";
 };
 
 }
