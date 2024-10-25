@@ -22,6 +22,7 @@
 #include "behaviortree_cpp/action_node.h"
 #include "behaviortree_cpp/bt_factory.h"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include <service_msgs/msg/service_event_info.hpp>
 
 #include "behaviortree_ros2/ros_node_params.hpp"
 
@@ -83,6 +84,13 @@ public:
   using GoalHandle = typename rclcpp_action::ClientGoalHandle<ActionT>;
   using WrappedResult = typename rclcpp_action::ClientGoalHandle<ActionT>::WrappedResult;
   using Feedback = typename ActionT::Feedback;
+
+  // SendGoal Introspection
+  using SendGoalService = typename ActionT::Impl::SendGoalService;
+  using SendGoalServiceEvent = typename SendGoalService::Event;
+  using SendGoalServiceEventPublisher = typename rclcpp::Publisher<SendGoalServiceEvent>;
+  using SendGoalServiceEventPublisherPtr = std::shared_ptr<SendGoalServiceEventPublisher>;
+  using SendGoalServiceRequest = typename SendGoalService::Request;
 
   /** To register this class into the factory, use:
    *
@@ -172,10 +180,12 @@ protected:
   bool action_name_may_change_ = false;
   const std::chrono::milliseconds server_timeout_;
   const std::chrono::milliseconds wait_for_server_timeout_;
+  rcl_service_introspection_state_t send_goal_service_introspection_state_;
 
 private:
 
   ActionClientPtr action_client_;
+  SendGoalServiceEventPublisherPtr pub_send_goal_request_event_;
   rclcpp::CallbackGroup::SharedPtr callback_group_;
   rclcpp::executors::SingleThreadedExecutor callback_group_executor_;
 
@@ -201,7 +211,8 @@ template<class T> inline
   BT::ActionNodeBase(instance_name, conf),
   node_(params.nh),
   server_timeout_(params.server_timeout),
-  wait_for_server_timeout_(params.wait_for_server_timeout)
+  wait_for_server_timeout_(params.wait_for_server_timeout),
+  send_goal_service_introspection_state_(params.send_goal_service_introspection_state)
 {
   // Three cases:
   // - we use the default action_name in RosNodeParams when port is empty
@@ -262,12 +273,19 @@ template<class T> inline
 
   prev_action_name_ = action_name;
 
+  if (send_goal_service_introspection_state_ == RCL_SERVICE_INTROSPECTION_METADATA or
+      send_goal_service_introspection_state_ == RCL_SERVICE_INTROSPECTION_CONTENTS) {
+    // Create the publisher for the send goal event
+    pub_send_goal_request_event_ = node_->create_publisher<SendGoalServiceEvent>(action_name + "/_action/send_goal/_service_event", 1);
+  }
+
   bool found = action_client_->wait_for_action_server(wait_for_server_timeout_);
   if(!found)
   {
     RCLCPP_ERROR(node_->get_logger(), "%s: Action server with name '%s' is not reachable.",
                  name().c_str(), prev_action_name_.c_str());
   }
+
   return found;
 }
 
@@ -354,6 +372,20 @@ template<class T> inline
 
     future_goal_handle_ = action_client_->async_send_goal( goal, goal_options );
     time_goal_sent_ = node_->now();
+
+    if (pub_send_goal_request_event_) {
+      // Send the introspection event for send_goal
+      SendGoalServiceEvent event_msg;
+      event_msg.info.event_type = service_msgs::msg::ServiceEventInfo::REQUEST_SENT;
+      event_msg.info.stamp = time_goal_sent_;
+      //event_msg.info.client_gid; // Needed? Set in goal_response_callback?
+
+      SendGoalServiceRequest request_msg;
+      request_msg.goal = goal;
+
+      event_msg.set__request({request_msg});
+      pub_send_goal_request_event_->publish(event_msg);
+    }
 
     return NodeStatus::RUNNING;
   }
@@ -451,4 +483,3 @@ template<class T> inline
 
 
 }  // namespace BT
-

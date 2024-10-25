@@ -144,7 +144,7 @@ protected:
   bool service_name_may_change_ = false;
   const std::chrono::milliseconds service_timeout_;
   const std::chrono::milliseconds wait_for_service_timeout_;
-  std::string service_introspection_state_;
+  rcl_service_introspection_state_t service_introspection_state_;
 
 private:
 
@@ -228,20 +228,8 @@ template<class T> inline
   callback_group_executor_.add_callback_group(callback_group_, node_->get_node_base_interface());
   service_client_ = node_->create_client<T>(service_name, rclcpp::ServicesQoS(), callback_group_);
 
-  rcl_service_introspection_state_t introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
-  if (service_introspection_state_ == "disabled") {
-    introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
-  } else if (service_introspection_state_ == "metadata") {
-    introspection_state = RCL_SERVICE_INTROSPECTION_METADATA;
-  } else if (service_introspection_state_ == "contents") {
-    introspection_state = RCL_SERVICE_INTROSPECTION_CONTENTS;
-  } else {
-    RCLCPP_ERROR(node_->get_logger(), "Invalid service_introspection_state: %s. Using 'disabled'.",
-                 service_introspection_state_.c_str());
-    introspection_state = RCL_SERVICE_INTROSPECTION_OFF;
-  }
   service_client_->configure_introspection(
-      node_->get_clock(), rclcpp::SystemDefaultsQoS(), introspection_state);
+      node_->get_clock(), rclcpp::SystemDefaultsQoS(), service_introspection_state_);
 
   prev_service_name_ = service_name;
 
