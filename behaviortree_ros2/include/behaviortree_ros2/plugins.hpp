@@ -20,6 +20,29 @@
 #include "behaviortree_cpp/utils/shared_library.h"
 #include "behaviortree_ros2/ros_node_params.hpp"
 
+namespace BT
+{
+constexpr const char* ROS_PLUGIN_SYMBOL = "BT_RegisterRosNodeFromPlugin";
+}
+
+/* Use this macro to automatically register one or more custom Nodes
+*  into a factory that require access to the BT::RosNodeParams.
+*  For instance:
+*
+*   BT_REGISTER_ROS_NODES(factory, params)
+*   {
+*     factory.registerNodeType<SpecialNode>("SpecialNode", params);
+*   }
+*
+* IMPORTANT: this function MUST be declared in a cpp file, NOT a header file.
+* You must add the definition [BT_PLUGIN_EXPORT] in CMakeLists.txt using:
+*
+*   target_compile_definitions(my_plugin_target PRIVATE  BT_PLUGIN_EXPORT )
+*/
+
+#define BT_REGISTER_ROS_NODES(factory, params)                                           \
+  BTCPP_EXPORT void BT_RegisterRosNodeFromPlugin(BT::BehaviorTreeFactory& factory,       \
+                                                 const BT::RosNodeParams& params)
 
 // Use this macro to generate a plugin for:
 //
@@ -34,14 +57,12 @@
 // Usage example:
 //   CreateRosNodePlugin(MyClassName, "MyClassName");
 
-#define CreateRosNodePlugin(TYPE, REGISTRATION_NAME)            \
-BTCPP_EXPORT void                                               \
-BT_RegisterRosNodeFromPlugin(BT::BehaviorTreeFactory& factory,  \
-                             const BT::RosNodeParams& params)   \
-{                                                               \
-  factory.registerNodeType<TYPE>(REGISTRATION_NAME, params);    \
-}                                                               \
-
+#define CreateRosNodePlugin(TYPE, REGISTRATION_NAME)                                     \
+  BTCPP_EXPORT void BT_RegisterRosNodeFromPlugin(BT::BehaviorTreeFactory& factory,       \
+                                                 const BT::RosNodeParams& params)        \
+  {                                                                                      \
+    factory.registerNodeType<TYPE>(REGISTRATION_NAME, params);                           \
+  }
 
 /**
  * @brief RegisterRosNode function used to load a plugin and register
@@ -51,18 +72,12 @@ BT_RegisterRosNodeFromPlugin(BT::BehaviorTreeFactory& factory,  \
  * @param filepath  path to the plugin.
  * @param params    parameters to pass to the instances of the Node.
  */
-inline
-void RegisterRosNode(BT::BehaviorTreeFactory& factory,
-                     const std::filesystem::path& filepath,
-                     const BT::RosNodeParams& params)
+inline void RegisterRosNode(BT::BehaviorTreeFactory& factory,
+                            const std::filesystem::path& filepath,
+                            const BT::RosNodeParams& params)
 {
   BT::SharedLibrary loader(filepath.generic_string());
-  typedef void (*Func)(BT::BehaviorTreeFactory&,
-                       const BT::RosNodeParams&);
-  auto func = (Func)loader.getSymbol("BT_RegisterRosNodeFromPlugin");
+  typedef void (*Func)(BT::BehaviorTreeFactory&, const BT::RosNodeParams&);
+  auto func = (Func)loader.getSymbol(BT::ROS_PLUGIN_SYMBOL);
   func(factory, params);
 }
-
-
-
-

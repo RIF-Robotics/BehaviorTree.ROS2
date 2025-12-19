@@ -24,7 +24,7 @@ namespace BT
 
 struct RosNodeParams
 {
-  std::shared_ptr<rclcpp::Node> nh;
+  std::weak_ptr<rclcpp::Node> nh;
 
   // This has different meaning based on the context:
   //
@@ -43,6 +43,13 @@ struct RosNodeParams
 
   rcl_service_introspection_state_t service_introspection_state;
   rcl_service_introspection_state_t send_goal_service_introspection_state;
+
+  RosNodeParams() = default;
+  RosNodeParams(std::shared_ptr<rclcpp::Node> node) : nh(node)
+  {}
+  RosNodeParams(std::shared_ptr<rclcpp::Node> node, const std::string& port_name)
+    : nh(node), default_port_value(port_name)
+  {}
 };
 
-}
+}  // namespace BT
