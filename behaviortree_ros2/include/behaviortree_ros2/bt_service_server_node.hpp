@@ -73,7 +73,9 @@ public:
    */
   static PortsList providedBasicPorts(PortsList addition)
   {
-    PortsList basic = { InputPort<std::string>("service_name", "", "Service name") };
+    PortsList basic = { InputPort<std::string>("service_name", "", "Service name"),
+                        InputPort<unsigned>("timeout_msec", 0,
+                                            "Timeout in milliseconds (0 = no timeout)") };
     basic.insert(addition.begin(), addition.end());
     return basic;
   }
@@ -122,6 +124,9 @@ protected:
 private:
   ServiceServerPtr service_server_;
   rclcpp::CallbackGroup::SharedPtr callback_group_;
+
+  rclcpp::Time time_started_;
+  unsigned timeout_msec_ = 0;
 
   std::mutex request_mutex_;
   bool request_processed_ = false;
@@ -268,6 +273,12 @@ inline NodeStatus RosServiceServerNode<T>::tick()
   // first step to be done only at the beginning of the Action
   if(status() == BT::NodeStatus::IDLE)
   {
+    getInput("timeout_msec", timeout_msec_);
+    if(auto node = node_.lock())
+    {
+      time_started_ = node->now();
+    }
+
     std::lock_guard<std::mutex> lock(request_mutex_);
     request_processed_ = false;
     process_status_ = NodeStatus::IDLE;
@@ -283,6 +294,22 @@ inline NodeStatus RosServiceServerNode<T>::tick()
       request_processed_ = false;
       return process_status_;
     }
+
+    // Check for timeout
+    if(timeout_msec_ > 0)
+    {
+      if(auto node = node_.lock())
+      {
+        auto elapsed = node->now() - time_started_;
+        if(elapsed.seconds() * 1000.0 > timeout_msec_)
+        {
+          RCLCPP_WARN(logger(), "Node [%s] timed out waiting for request.",
+                      name().c_str());
+          return NodeStatus::FAILURE;
+        }
+      }
+    }
+
     return NodeStatus::RUNNING;
   }
 
